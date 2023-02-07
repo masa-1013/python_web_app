@@ -21,6 +21,11 @@ class TCPServer:
       with open("server_recv.txt", "wb") as f:
         f.write(request)
 
+      with open("server_send.txt", "rb") as f:
+        response = f.read()
+
+      client_socket.send(response)
+
       client_socket.close()
 
     finally:
