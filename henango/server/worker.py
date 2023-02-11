@@ -10,7 +10,7 @@ from typing import Tuple, Optional
 import settings
 from henango.http.request import HTTPRequest
 from henango.http.response import HTTPResponse
-from urls import url_patterns
+from henango.urls.resolver import URLResolver
 
 class Worker(Thread):
 
@@ -43,22 +43,9 @@ class Worker(Thread):
 
       request = self.parse_http_request(request_bytes)
 
-      for url_pattern in url_patterns:
-        match = url_pattern.match(request.path)
-        if match:
-          request.params.update(match.groupdict())
-          response = url_pattern.view(request)
-          break
-      else:
-        try:
-          response_body = self.get_static_file_content(request.path)
-          content_type = None
-          response = HTTPResponse(body=response_body, content_type=content_type, status_code=200)
-        except OSError:
-          traceback.print_exc()
-          response_body = b"<html><body><h1>404 Not Found</h1></body></html>"
-          content_type = "text/html; charset=UTF-8"
-          response = HTTPResponse(body=response_body, content_type=content_type, status_code=404)
+      view = URLResolver().resolve(request)
+
+      response = view(request)
 
       response_line = self.build_response_line(response)
 
