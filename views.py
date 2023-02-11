@@ -2,7 +2,6 @@ import textwrap
 import urllib.parse
 from datetime import datetime
 from pprint import pformat
-from typing import Tuple, Optional
 
 from henango.http.request import HTTPRequest
 from henango.http.response import HTTPResponse
@@ -34,9 +33,9 @@ def show_request(
             {request.method} {request.path} {request.http_version}
         </p>
         <h1>Headers:</h1>
-        <pre>{pformat(request.request_header)}</pre>
+        <pre>{pformat(request.headers)}</pre>
         <h1>Body:</h1>
-        <pre>{request.request_body.decode("utf-8", "ignore")}</pre>
+        <pre>{request.body.decode("utf-8", "ignore")}</pre>
         
     </body>
     </html>
