@@ -2,10 +2,9 @@ import os
 import re
 import traceback
 from datetime import datetime
-from pprint import pformat
 from socket import socket
 from threading import Thread
-from typing import Tuple, Optional
+from typing import Tuple
 
 from henango.http.request import HTTPRequest
 from henango.http.response import HTTPResponse
