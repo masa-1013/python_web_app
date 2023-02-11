@@ -1,6 +1,6 @@
 import socket
 
-from worker import Worker
+from henango.server.worker import Worker
 
 class Server:
   def serve(self):

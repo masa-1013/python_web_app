@@ -2,17 +2,17 @@ import os
 import re
 import traceback
 from datetime import datetime
+from re import Match
 from socket import socket
 from threading import Thread
-from typing import Tuple
+from typing import Tuple, Optional
 
+import settings
 from henango.http.request import HTTPRequest
 from henango.http.response import HTTPResponse
 from urls import URL_VIEW
 
 class Worker(Thread):
-  BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-  STATIC_ROOT = os.path.join(BASE_DIR, "static")
 
   MIME_TYPES = {
     "html": "text/html; charset=UTF-8",
@@ -43,9 +43,12 @@ class Worker(Thread):
 
       request = self.parse_http_request(request_bytes)
 
-      if request.path in URL_VIEW:
-        view = URL_VIEW[request.path]
-        response = view(request)
+      for url_pattern, view in URL_VIEW.items():
+        match = self.url_match(url_pattern, request.path)
+        if match:
+          request.params.update(match.groupdict())
+          response = view(request)
+          break
       else:
         try:
           response_body = self.get_static_file_content(request.path)
@@ -86,8 +89,11 @@ class Worker(Thread):
     return HTTPRequest(method=method, path=path, http_version=http_version, headers=headers, body=request_body)
 
   def get_static_file_content(self, path: str) -> bytes:
+    default_static_root = os.path.join(os.path.dirname(__file__), "../../static")
+    static_root = getattr(settings, "STATIC_ROOT", default_static_root)
+
     relative_path = path.lstrip("/")
-    stacic_file_path = os.path.join(self.STATIC_ROOT, relative_path)
+    stacic_file_path = os.path.join(static_root, relative_path)
     with open(stacic_file_path, "rb") as f:
       return f.read()
 
@@ -112,3 +118,7 @@ class Worker(Thread):
   def build_response_line(self, response: HTTPResponse) -> str:
     status_line = self.STATUS_LINES[response.status_code]
     return f"HTTP/1.1 {status_line}"
+
+  def url_match(self, url_pattern: str, path: str) -> Optional[Match]:
+    re_pattern = re.sub(r"<(.+?)>", r"(?P<\1>[^/]+)", url_pattern)
+    return re.match(re_pattern, path)
