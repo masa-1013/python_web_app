@@ -1,8 +1,8 @@
 import socket
 
-from workerthread import WorkerThread
+from worker import Worker
 
-class WebServer:
+class Server:
   def serve(self):
     print("=== Server: サーバーを起動します ===")
 
@@ -15,7 +15,7 @@ class WebServer:
         (client_socket, address) = server_socket.accept()
         print(f"=== Server: クライアントとの接続が完了しました remote_address: {address} ===")
 
-        thread = WorkerThread(client_socket, address)
+        thread = Worker(client_socket, address)
 
         thread.start()
     finally:

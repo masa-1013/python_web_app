@@ -11,7 +11,7 @@ from henango.http.request import HTTPRequest
 from henango.http.response import HTTPResponse
 from urls import URL_VIEW
 
-class WorkerThread(Thread):
+class Worker(Thread):
   BASE_DIR = os.path.dirname(os.path.abspath(__file__))
   STATIC_ROOT = os.path.join(BASE_DIR, "static")
 
