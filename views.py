@@ -38,4 +38,37 @@ def user_profile(request: HTTPRequest) -> HTTPResponse:
 
   return HTTPResponse(body=body)
 
+def set_cookie(request: HTTPRequest) -> HTTPResponse:
+  return HTTPResponse(headers={"Set-Cookie": "username=TARO"})
 
+def login(request: HTTPRequest) -> HTTPResponse:
+  if request.method == "GET":
+    body = render("login.html", {})
+    return HTTPResponse(body=body)
+  
+  elif request.method == "POST":
+    post_params = urllib.parse.parse_qs(request.body.decode())
+    user_name = post_params["username"][0]
+
+    headers = {"Location": "/welcome", "Set-Cookie": f"username={user_name}"}
+    return HTTPResponse(status_code=302, headers=headers)
+
+def welcome(request: HTTPRequest) -> HTTPResponse:
+  cookie_header = request.headers.get("Cookie", None)
+
+  if not cookie_header:
+    return HTTPResponse(status_code=302, headers={"Location": "/login"})
+
+  cookie_strings = cookie_header.split("; ")
+
+  cookies = {}
+  for cookie_string in cookie_strings:
+    name, value = cookie_string.split("=", maxsplit=1)
+    cookies[name] = value
+
+  if "username" not in cookies:
+    return HTTPResponse(status_code=302, headers={"Location": "/login"})
+
+  body = render("welcome.html", context={"username": cookies["username"]})
+
+  return HTTPResponse(body=body)

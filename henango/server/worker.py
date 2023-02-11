@@ -24,6 +24,7 @@ class Worker(Thread):
 
   STATUS_LINES = {
     200: "200 OK",
+    302: "302 Found",
     404: "404 Not Found",
     405: "405 Method Not Allowed",
   }
@@ -101,6 +102,9 @@ class Worker(Thread):
     response_header += f"Content-Length: {len(response.body)}\r\n"
     response_header += "Connection: Close\r\n"
     response_header += f"Content-Type: {response.content_type}\r\n"
+
+    for header_name, header_value in response.headers.items():
+      response_header += f"{header_name}: {header_value}\r\n"
 
     return response_header
 
