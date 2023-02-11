@@ -1,13 +1,15 @@
 import os
 import re
-import textwrap
 import traceback
-import urllib.parse
 from datetime import datetime
 from pprint import pformat
 from socket import socket
 from threading import Thread
 from typing import Tuple, Optional
+
+from henango.http.request import HTTPRequest
+from henango.http.response import HTTPResponse
+from urls import URL_VIEW
 
 class WorkerThread(Thread):
   BASE_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -21,6 +23,12 @@ class WorkerThread(Thread):
     "gif": "image/gif",
   }
 
+  STATUS_LINES = {
+    200: "200 OK",
+    404: "404 Not Found",
+    405: "405 Method Not Allowed",
+  }
+
   def __init__(self, client_socket: socket, address: Tuple[str, int]):
     super().__init__()
 
@@ -29,88 +37,34 @@ class WorkerThread(Thread):
 
   def run(self) -> None:
     try:
-      request = self.client_socket.recv(4096)
+      request_bytes = self.client_socket.recv(4096)
 
       with open("server_recv.txt", "wb") as f:
-        f.write(request)
+        f.write(request_bytes)
 
-      method, path, http_version, request_header, request_body = self.parse_http_request(request)
+      request = self.parse_http_request(request_bytes)
 
-      response_body: bytes
-      content_type: Optional[str]
-      response_line: str
-
-      if path == "/now":
-        html = f"""\
-          <html>
-          <body>
-              <h1>Now: {datetime.now()}</h1>
-          </body>
-          </html>
-        """
-        response_body = textwrap.dedent(html).encode()
-
-        content_type = "text/html; charset=UTF-8"
-
-        response_line = "HTTP/1.1 200 OK\r\n"
-      elif path == "/show_request":
-        html = f"""\
-          <html>
-          <body>
-              <h1>Request Line:</h1>
-              <p>
-                  {method} {path} {http_version}
-              </p>
-              <h1>Headers:</h1>
-              <pre>{pformat(request_header)}</pre>
-              <h1>Body:</h1>
-              <pre>{request_body.decode("utf-8", "ignore")}</pre>
-              
-          </body>
-          </html>
-        """
-        response_body = textwrap.dedent(html).encode()
-
-        content_type = "text/html; charset=UTF-8"
-
-        response_line = "HTTP/1.1 200 OK\r\n"
-      elif path == "/parameters":
-        if method == "GET":
-          response_body = b"<html><body><h1>405 Method Not Allowed</h1></body></html>"
-          content_type = "text/html; charset=UTF-8"
-          response_line = "HTTP/1.1 405 Method Not Allowed\r\n"
-
-        elif method == "POST":
-          post_params = urllib.parse.parse_qs(request_body.decode())
-          html = f"""\
-              <html>
-              <body>
-                  <h1>Parameters:</h1>
-                  <pre>{pformat(post_params)}</pre>                        
-              </body>
-              </html>
-          """
-          response_body = textwrap.dedent(html).encode()
-          content_type = "text/html; charset=UTF-8"
-          response_line = "HTTP/1.1 200 OK\r\n"
+      if request.path in URL_VIEW:
+        view = URL_VIEW[request.path]
+        response = view(request)
       else:
         try:
-          response_body = self.get_static_file_content(path)
-
+          response_body = self.get_static_file_content(request.path)
           content_type = None
-
-          response_line = "HTTP/1.1 200 OK\r\n"
+          response = HTTPResponse(body=response_body, content_type=content_type, status_code=200)
         except OSError:
           traceback.print_exc()
           response_body = b"<html><body><h1>404 Not Found</h1></body></html>"
           content_type = "text/html; charset=UTF-8"
-          response_line = "HTTP/1.1 404 Not Found\r\n"
+          response = HTTPResponse(body=response_body, content_type=content_type, status_code=404)
 
-      response_header = self.build_response_header(path, response_body, content_type)
+      response_line = self.build_response_line(response)
 
-      response = (response_line + response_header + "\r\n").encode() + response_body
+      response_header = self.build_response_header(response, request)
 
-      self.client_socket.send(response)
+      response_bytes = (response_line + response_header + "\r\n").encode() + response.body
+
+      self.client_socket.send(response_bytes)
     except Exception:
       print("=== Worker: リクエストの処理中にエラーが発生しました ===")
       traceback.print_exc()
@@ -118,7 +72,7 @@ class WorkerThread(Thread):
       print(f"=== Worker: クライアントとの通信を終了します remote_address: {self.client_address} ===")
       self.client_socket.close()
 
-  def parse_http_request(self, request: bytes) -> Tuple[str, str, str, dict, bytes]:
+  def parse_http_request(self, request: bytes) -> HTTPRequest:
     request_line, remain = request.split(b"\r\n", maxsplit=1)
     request_header, request_body = remain.split(b"\r\n\r\n", maxsplit=1)
 
@@ -130,7 +84,7 @@ class WorkerThread(Thread):
       key, value = re.split(r": *", header_row, maxsplit=1)
       headers[key] = value
 
-    return method, path, http_version, headers, request_body
+    return HTTPRequest(method=method, path=path, http_version=http_version, headers=headers, body=request_body)
 
   def get_static_file_content(self, path: str) -> bytes:
     relative_path = path.lstrip("/")
@@ -138,20 +92,24 @@ class WorkerThread(Thread):
     with open(stacic_file_path, "rb") as f:
       return f.read()
 
-  def build_response_header(self, path: str, response_body: bytes, content_type: Optional[str]) -> str:
-    if content_type is None:
-      if "." in path:
-        ext = path.rsplit(".", maxsplit=1)[-1]
+  def build_response_header(self, response: HTTPResponse, request: HTTPRequest) -> str:
+    if response.content_type is None:
+      if "." in request.path:
+        ext = request.path.rsplit(".", maxsplit=1)[-1]
       else:
         ext = ""
 
-      content_type = self.MIME_TYPES.get(ext, "application/octet-stream")
+      response.content_type = self.MIME_TYPES.get(ext, "application/octet-stream")
 
     response_header = ""
     response_header += f"Date: {datetime.utcnow().strftime('%a, %d %b %Y %H:%M:%S GMT')}\r\n"
     response_header += "Host: HenaServer/0.1\r\n"
-    response_header += f"Content-Length: {len(response_body)}\r\n"
+    response_header += f"Content-Length: {len(response.body)}\r\n"
     response_header += "Connection: Close\r\n"
-    response_header += f"Content-Type: {content_type}\r\n"
+    response_header += f"Content-Type: {response.content_type}\r\n"
 
     return response_header
+
+  def build_response_line(self, response: HTTPResponse) -> str:
+    status_line = self.STATUS_LINES[response.status_code]
+    return f"HTTP/1.1 {status_line}"
