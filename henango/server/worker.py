@@ -77,7 +77,15 @@ class Worker(Thread):
       key, value = re.split(r": *", header_row, maxsplit=1)
       headers[key] = value
 
-    return HTTPRequest(method=method, path=path, http_version=http_version, headers=headers, body=request_body)
+    cookies = {}
+    if "Cookie" in headers:
+      cookie_strings = headers["Cookie"].split("; ")
+
+      for cookie_string in cookie_strings:
+        name, value = cookie_string.split("=", maxsplit=1)
+        cookies[name] = value
+
+    return HTTPRequest(method=method, path=path, http_version=http_version, headers=headers, cookies = cookies, body=request_body)
 
   def get_static_file_content(self, path: str) -> bytes:
     default_static_root = os.path.join(os.path.dirname(__file__), "../../static")
@@ -102,6 +110,9 @@ class Worker(Thread):
     response_header += f"Content-Length: {len(response.body)}\r\n"
     response_header += "Connection: Close\r\n"
     response_header += f"Content-Type: {response.content_type}\r\n"
+
+    for cookie_name, cookie_value in response.cookies.items():
+      response_header += f"Set-Cookie: {cookie_name}={cookie_value}\r\n"
 
     for header_name, header_value in response.headers.items():
       response_header += f"{header_name}: {header_value}\r\n"
